@@ -11,7 +11,7 @@ setup(
         "geopandas",
         "pandas[parquet]",
         "shapely",
-        "matplotlib",
+        "matplotlib"
     ],
     extras_require={"dev": ["ruff", "pytest"]},
 )
