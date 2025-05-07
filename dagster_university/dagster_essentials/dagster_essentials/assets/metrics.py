@@ -6,12 +6,13 @@ import geopandas as gpd
 import duckdb
 import os
 
+from dagster_duckdb import DuckDBResource
 from dagster_essentials.assets import constants
 
 @dg.asset(
     deps=["taxi_trips", "taxi_zones"]
 )
-def manhattan_stats() -> None:
+def manhattan_stats(database: DuckDBResource) -> None:
     query = """
         select
             zones.zone,
@@ -23,9 +24,9 @@ def manhattan_stats() -> None:
         where borough = 'Manhattan' and geometry is not null
         group by zone, borough, geometry
     """
-        
-    conn = duckdb.connect(os.getenv("DUCKDB_DATABASE"))
-    trips_by_zone = conn.execute(query).fetch_df()
+    
+    with database.get_connection() as conn:
+        trips_by_zone = conn.execute(query).fetch_df()
 
     trips_by_zone["geometry"] = gpd.GeoSeries.from_wkt(trips_by_zone["geometry"])
     trips_by_zone = gpd.GeoDataFrame(trips_by_zone)
@@ -53,7 +54,7 @@ def manhattan_map() -> None:
 
 
 @dg.asset(deps=["taxi_trips"])
-def trips_by_week()-> None:
+def trips_by_week(database: DuckDBResource)-> None:
     query = f"""
     COPY (
         select
@@ -67,5 +68,5 @@ def trips_by_week()-> None:
         ) TO '{constants.TRIPS_BY_WEEK_FILE_PATH}' (HEADER, DELIMITER ',')
     """
         
-    conn = duckdb.connect(os.getenv("DUCKDB_DATABASE"))
-    conn.execute(query)
+    with database.get_connection() as conn:
+        conn.execute(query)
