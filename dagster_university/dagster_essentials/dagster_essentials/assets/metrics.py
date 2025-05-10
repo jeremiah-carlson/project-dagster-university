@@ -5,6 +5,7 @@ import geopandas as gpd
 
 import duckdb
 import os
+import pandas as pd
 
 from dagster_duckdb import DuckDBResource
 from dagster_essentials.assets import constants
@@ -60,7 +61,6 @@ def trips_by_week(context: dg.AssetExecutionContext, database: DuckDBResource)->
     period_to_fetch = context.partition_key
     
     query = f"""
-    COPY (
         select
             date_trunc('week', pickup_datetime) + interval '6 day' AS period,
             count(*) as num_trips,
@@ -70,8 +70,18 @@ def trips_by_week(context: dg.AssetExecutionContext, database: DuckDBResource)->
         from trips
         where pickup_datetime >= '{period_to_fetch}' and pickup_datetime < '{period_to_fetch}'::date + interval '1 week'
         group by date_trunc('week', pickup_datetime) + interval '6 day'
-        ) TO '{constants.TRIPS_BY_WEEK_FILE_PATH}' (HEADER, DELIMITER ',')
     """
         
     with database.get_connection() as conn:
-        conn.execute(query)
+        agg_df = conn.execute(query)
+
+    try:
+        # If the file already exists, append to it, but replace the existing month's data
+        existing = pd.read_csv(constants.TRIPS_BY_WEEK_FILE_PATH)
+        existing = existing[existing["period"] != period_to_fetch]
+        existing = pd.concat([existing, agg_df]).sort_values(by="period")
+        existing.to_csv(constants.TRIPS_BY_WEEK_FILE_PATH, index=False)
+    except FileNotFoundError:
+        agg_df.to_csv(constants.TRIPS_BY_WEEK_FILE_PATH, index=False)
+
+    
